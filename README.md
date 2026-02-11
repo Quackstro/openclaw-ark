@@ -15,15 +15,16 @@
 
 ## Install
 
-```bash
-openclaw plugins install @quackstro/ark
-```
-
-Or clone locally:
+### From source (recommended)
 ```bash
 cd ~/.openclaw/extensions
 git clone https://github.com/Quackstro/openclaw-ark ark
 cd ark && npm install && npm run build
+```
+
+### Via npm (coming soon)
+```bash
+openclaw plugins install @quackstro/ark
 ```
 
 ## Documentation
