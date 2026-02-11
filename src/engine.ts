@@ -323,8 +323,12 @@ export async function restoreBackup(
     const base = basePaths[0]!;
     let outPath: string;
 
-    // If the base is a file (like openclaw.json), write directly
-    if (base.endsWith(".json") && !relPath) {
+    // If the base is a file (like openclaw.json), write directly to it
+    // The tar entry will be "config/openclaw.json" so relPath = "openclaw.json"
+    if (!relPath) {
+      outPath = base;
+    } else if (base.match(/\.[a-z]+$/i)) {
+      // Base is a file path (has extension) — write to base directly, ignore relPath
       outPath = base;
     } else {
       outPath = resolve(base, relPath);
