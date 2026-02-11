@@ -26,7 +26,24 @@ git clone https://github.com/Quackstro/openclaw-ark ark
 cd ark && npm install && npm run build
 ```
 
+## Documentation
+
+- **[Command Reference](docs/COMMAND-REFERENCE.md)** — All slash commands, agent tools, and CLI usage
+- **[Architecture](docs/ARCHITECTURE.md)** — Archive format, encryption, categories, tar implementation
+- **[Migration Guide](docs/MIGRATION-GUIDE.md)** — Step-by-step guide for moving to a new system
+
 ## Usage
+
+### Telegram
+
+| Command | Description |
+|---------|-------------|
+| `/ark` | Status overview |
+| `/ark backup <passphrase>` | Create encrypted backup |
+| `/ark list` | List all backups |
+| `/ark restore` | Restore instructions |
+| `/ark prune` | Remove old backups |
+| `/ark help` | Command reference |
 
 ### CLI
 
