@@ -1,0 +1,75 @@
+{
+  "id": "backup",
+  "name": "OpenClaw Backup",
+  "version": "0.1.0",
+  "description": "Encrypted backup & restore for OpenClaw — configs, plugins, brain, wallet, workspace 📦",
+  "author": "Quackstro LLC",
+  "license": "MIT",
+  "kind": "service",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "backupDir": {
+        "type": "string",
+        "default": "~/.openclaw/backups",
+        "description": "Directory to store backup archives"
+      },
+      "categories": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Toggle which categories to include in backups",
+        "properties": {
+          "config":      { "type": "boolean", "default": true },
+          "credentials": { "type": "boolean", "default": true },
+          "wallet":      { "type": "boolean", "default": true },
+          "brain":       { "type": "boolean", "default": true },
+          "docrag":      { "type": "boolean", "default": true },
+          "cron":        { "type": "boolean", "default": true },
+          "extensions":  { "type": "boolean", "default": true },
+          "workspace":   { "type": "boolean", "default": true },
+          "devices":     { "type": "boolean", "default": true },
+          "identity":    { "type": "boolean", "default": true }
+        }
+      },
+      "retention": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "maxBackups": {
+            "type": "number",
+            "default": 5,
+            "description": "Maximum number of backup archives to keep (oldest pruned)"
+          },
+          "maxAgeDays": {
+            "type": "number",
+            "default": 30,
+            "description": "Delete backups older than this many days"
+          }
+        }
+      },
+      "notifications": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": { "type": "boolean", "default": true },
+          "channel": { "type": "string", "default": "telegram" },
+          "target":  { "type": "string", "description": "Chat ID for notifications" }
+        }
+      }
+    }
+  },
+  "uiHints": {
+    "backupDir": {
+      "label": "Backup Directory",
+      "placeholder": "~/.openclaw/backups"
+    },
+    "retention.maxBackups": {
+      "label": "Max Backups to Keep"
+    },
+    "notifications.target": {
+      "label": "Notification Target",
+      "placeholder": "Telegram chat ID"
+    }
+  }
+}

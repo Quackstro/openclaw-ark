@@ -1,0 +1,55 @@
+{
+  "name": "@quackstro/backup",
+  "version": "0.1.0",
+  "description": "Encrypted backup & restore plugin for OpenClaw — migrate configs, plugins, brain, wallet, and workspace to any system 📦",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist/index.*",
+    "dist/src/**",
+    "!dist/src/tests/**",
+    "openclaw.plugin.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "openclaw": {
+    "extensions": [
+      "./dist/index.js"
+    ]
+  },
+  "keywords": [
+    "openclaw",
+    "openclaw-plugin",
+    "backup",
+    "restore",
+    "migration",
+    "agent"
+  ],
+  "author": "Quackstro LLC",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Quackstro/openclaw-backup"
+  },
+  "homepage": "https://github.com/Quackstro/openclaw-backup#readme",
+  "bugs": {
+    "url": "https://github.com/Quackstro/openclaw-backup/issues"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.48"
+  }
+}
