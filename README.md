@@ -10,7 +10,7 @@
 - **Retention policy** — auto-prune old backups by count or age
 - **Agent tools** — `backup_create`, `backup_restore`, `backup_list`, `backup_status`
 - **CLI commands** — `openclaw backup create|restore|list|prune`
-- **Auto-reply** — `/backup` shows quick status
+- **Slash commands** — `/ark`, `/ark backup`, `/ark list`, `/ark restore`, `/ark prune`, `/ark help`
 - **Zero external dependencies** — uses Node.js built-in crypto, zlib, and a minimal tar implementation
 
 ## Install
@@ -76,12 +76,6 @@ openclaw backup prune
 > "Show backup status"
 > "Restore from the latest backup"
 > "List my backups"
-
-### Auto-reply
-
-```
-/backup
-```
 
 ## Configuration
 
@@ -154,6 +148,22 @@ Key derivation: PBKDF2-SHA512, 600,000 iterations.
 2. **Copy** the `.ocbak` file to the new system
 3. **On new system**: Install OpenClaw, then `openclaw backup restore ./file.ocbak -p "migrate-2026"`
 4. **Restart**: `sudo supervisorctl restart openclaw`
+
+## Testing
+
+```bash
+# Run all tests
+npm test
+
+# Or directly
+node --test tests/config.test.ts tests/engine.test.ts
+```
+
+**23 tests** covering:
+- Config parsing (defaults, overrides, categories, tilde expansion)
+- Backup creation, listing, restore (correct/wrong passphrase, dry-run, selective)
+- Pruning (max count enforcement)
+- Archive format (magic bytes, salt, ciphertext uniqueness)
 
 ## License
 
