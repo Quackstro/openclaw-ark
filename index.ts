@@ -294,21 +294,102 @@ export default function register(api: any) {
     { commands: ["backup"] },
   );
 
-  // ─── Auto-reply command ────────────────────────────────────────────────
+  // ─── Auto-reply command: /ark ────────────────────────────────────────
 
   api.registerCommand({
-    name: "backup",
-    description: "Show backup status",
-    handler: async () => {
-      const backups = await listBackups(config.backupDir);
-      const last = backups[0];
-      const enabled = CATEGORIES.filter((c) => config.categories[c.id]).map((c) => c.id).join(", ");
+    name: "ark",
+    description: "🚢 Ark backup & restore — /ark [backup|restore|list|status|help]",
+    acceptsArgs: true,
+    handler: async (ctx: any) => {
+      const args = ctx.args?.trim() ?? "";
+      const parts = args.split(/\s+/);
+      const subCmd = (parts[0] ?? "").toLowerCase();
+      const subArgs = parts.slice(1).join(" ");
 
-      return {
-        text: last
-          ? `📦 Last backup: ${last.filename}\n📏 ${(last.sizeBytes / 1024 / 1024).toFixed(1)}MB | ${last.createdAt.toISOString()}\n📂 ${backups.length} total in ${config.backupDir}\n🗂 Categories: ${enabled}`
-          : `📦 No backups yet.\n🗂 Categories: ${enabled}\n\nAsk me to create one, or run: openclaw backup create -p <passphrase>`,
-      };
+      switch (subCmd) {
+        case "":
+        case "status": {
+          const backups = await listBackups(config.backupDir);
+          const last = backups[0];
+          const enabled = CATEGORIES.filter((c) => config.categories[c.id]).map((c) => c.id).join(", ");
+          return {
+            text: last
+              ? `🚢 Ark Status\n━━━━━━━━━━━━━━━━━━━━━━\n📦 Last: ${last.filename}\n📏 ${(last.sizeBytes / 1024 / 1024).toFixed(1)}MB | ${last.createdAt.toISOString()}\n📂 ${backups.length} total\n🗂 Categories: ${enabled}`
+              : `🚢 Ark Status\n━━━━━━━━━━━━━━━━━━━━━━\n📦 No backups yet.\n🗂 Categories: ${enabled}\n\nUse /ark backup <passphrase> to create one.`,
+          };
+        }
+
+        case "backup":
+        case "create": {
+          const passphrase = subArgs.trim();
+          if (!passphrase || passphrase.length < 8) {
+            return { text: "⚠️ Usage: /ark backup <passphrase>\nPassphrase must be at least 8 characters." };
+          }
+          try {
+            const result = await createBackup(passphrase, config, logger);
+            const pruned = await pruneBackups(config, logger);
+            return {
+              text: [
+                `✅ Backup created!`,
+                `📦 ${result.path.split("/").pop()}`,
+                `📏 ${(result.sizeBytes / 1024 / 1024).toFixed(1)}MB | ${result.manifest.fileCount} files | ${result.durationMs}ms`,
+                `🗂 ${result.manifest.categories.join(", ")}`,
+                pruned.length > 0 ? `🗑 Pruned ${pruned.length} old backup(s)` : "",
+              ].filter(Boolean).join("\n"),
+            };
+          } catch (err: any) {
+            return { text: `❌ Backup failed: ${err.message}` };
+          }
+        }
+
+        case "list": {
+          const backups = await listBackups(config.backupDir);
+          if (backups.length === 0) return { text: "📦 No backups found." };
+          const lines = backups.map(
+            (b) => `  ${b.filename}\n    ${(b.sizeBytes / 1024 / 1024).toFixed(1)}MB · ${b.createdAt.toISOString()}`,
+          );
+          return { text: `🚢 Ark Backups (${backups.length})\n━━━━━━━━━━━━━━━━━━━━━━\n${lines.join("\n")}` };
+        }
+
+        case "restore": {
+          return {
+            text: "⚠️ Restore requires the agent tools for safety.\n\nAsk me: \"Restore from the latest backup with passphrase <pass>\"\n\nOr use CLI: openclaw backup restore <file> -p <pass>",
+          };
+        }
+
+        case "prune": {
+          try {
+            const pruned = await pruneBackups(config, logger);
+            return {
+              text: pruned.length > 0
+                ? `🗑 Pruned ${pruned.length} backup(s): ${pruned.join(", ")}`
+                : "✅ Nothing to prune.",
+            };
+          } catch (err: any) {
+            return { text: `❌ Prune failed: ${err.message}` };
+          }
+        }
+
+        case "help":
+          return {
+            text: [
+              "🚢 Ark Commands",
+              "━━━━━━━━━━━━━━━━━━━━━━",
+              "  /ark — Status overview",
+              "  /ark backup <passphrase> — Create encrypted backup",
+              "  /ark list — List all backups",
+              "  /ark restore — Restore instructions",
+              "  /ark prune — Remove old backups",
+              "  /ark help — This message",
+              "",
+              "🔐 Archives use AES-256-GCM encryption.",
+              "📂 Stored in: ~/.openclaw/backups/",
+            ].join("\n"),
+          };
+
+        default:
+          return { text: `🚢 Unknown command: "${subCmd}"\nTry /ark help` };
+      }
     },
   });
 
