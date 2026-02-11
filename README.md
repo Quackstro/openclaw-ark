@@ -1,6 +1,6 @@
-# @quackstro/openclaw-backup 📦
+# @quackstro/ark 🚢
 
-Encrypted backup & restore plugin for OpenClaw. Migrate your entire setup — configs, plugins, brain data, wallet, workspace — to a new system in one command.
+**Ark** — Encrypted backup & restore plugin for OpenClaw. Preserve your entire setup and migrate to a new system in one command.
 
 ## Features
 
@@ -16,14 +16,14 @@ Encrypted backup & restore plugin for OpenClaw. Migrate your entire setup — co
 ## Install
 
 ```bash
-openclaw plugins install @quackstro/openclaw-backup
+openclaw plugins install @quackstro/ark
 ```
 
 Or clone locally:
 ```bash
 cd ~/.openclaw/extensions
-git clone https://github.com/Quackstro/openclaw-backup backup
-cd backup && npm install && npm run build
+git clone https://github.com/Quackstro/openclaw-ark ark
+cd ark && npm install && npm run build
 ```
 
 ## Usage
@@ -72,7 +72,7 @@ openclaw backup prune
 {
   plugins: {
     entries: {
-      backup: {
+      ark: {
         enabled: true,
         config: {
           backupDir: "~/.openclaw/backups",
@@ -119,7 +119,7 @@ openclaw backup prune
 | `devices` | Paired device configs | No |
 | `identity` | Agent identity data | No |
 
-## Archive Format
+## Archive Format (.ocbak)
 
 ```
 OCBAK1 (6 bytes magic)

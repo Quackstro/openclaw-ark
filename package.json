@@ -1,7 +1,7 @@
 {
-  "name": "@quackstro/backup",
+  "name": "@quackstro/ark",
   "version": "0.1.0",
-  "description": "Encrypted backup & restore plugin for OpenClaw — migrate configs, plugins, brain, wallet, and workspace to any system 📦",
+  "description": "Encrypted backup & restore plugin for OpenClaw — preserve and migrate your entire setup to any system 🚢",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -35,11 +35,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Quackstro/openclaw-backup"
+    "url": "https://github.com/Quackstro/openclaw-ark"
   },
-  "homepage": "https://github.com/Quackstro/openclaw-backup#readme",
+  "homepage": "https://github.com/Quackstro/openclaw-ark#readme",
   "bugs": {
-    "url": "https://github.com/Quackstro/openclaw-backup/issues"
+    "url": "https://github.com/Quackstro/openclaw-ark/issues"
   },
   "engines": {
     "node": ">=20.0.0"

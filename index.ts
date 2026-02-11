@@ -5,7 +5,6 @@
  * - Agent tools: backup_create, backup_restore, backup_list, backup_status
  * - CLI commands: openclaw backup create|restore|list|prune
  * - Auto-reply command: /backup
- * - Background service for scheduled backups
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -15,13 +14,14 @@ import { createBackup, restoreBackup, listBackups, pruneBackups } from "./src/en
 
 export default function register(api: any) {
   const logger = api.logger ?? console;
-  const rawCfg = api.config?.plugins?.entries?.backup?.config ?? {};
+  const rawCfg = api.config?.plugins?.entries?.ark?.config ?? {};
   const config = parseConfig(rawCfg);
 
   // ─── Agent Tools ───────────────────────────────────────────────────────
 
   api.registerTool({
     name: "backup_create",
+    label: "Create Backup",
     description:
       "Create an encrypted backup of OpenClaw configs, plugins, brain, wallet, and workspace. Returns backup path and stats.",
     parameters: Type.Object({
@@ -32,39 +32,52 @@ export default function register(api: any) {
         }),
       ),
     }),
-    handler: async ({ passphrase, categories }: { passphrase: string; categories?: string[] }) => {
-      if (passphrase.length < 8) {
-        return { error: "Passphrase must be at least 8 characters" };
+    async execute(_toolCallId: string, params: { passphrase: string; categories?: string[] }) {
+      if (params.passphrase.length < 8) {
+        return {
+          content: [{ type: "text", text: "Error: Passphrase must be at least 8 characters." }],
+          details: { error: "passphrase_too_short" },
+        };
       }
 
-      const effectiveConfig = categories
+      const effectiveConfig = params.categories
         ? {
             ...config,
             categories: Object.fromEntries(
-              CATEGORIES.map((c) => [c.id, categories.includes(c.id)]),
+              CATEGORIES.map((c) => [c.id, params.categories!.includes(c.id)]),
             ),
           }
         : config;
 
-      const result = await createBackup(passphrase, effectiveConfig, logger);
-
-      // Prune old backups
+      const result = await createBackup(params.passphrase, effectiveConfig, logger);
       const pruned = await pruneBackups(effectiveConfig, logger);
 
+      const summary = [
+        `✅ Backup created: ${result.path}`,
+        `📏 Size: ${(result.sizeBytes / 1024 / 1024).toFixed(1)}MB | Files: ${result.manifest.fileCount}`,
+        `🗂 Categories: ${result.manifest.categories.join(", ")}`,
+        `⏱ Duration: ${result.durationMs}ms`,
+        pruned.length > 0 ? `🗑 Pruned ${pruned.length} old backup(s)` : "",
+      ].filter(Boolean).join("\n");
+
       return {
-        path: result.path,
-        sizeBytes: result.sizeBytes,
-        sizeMB: (result.sizeBytes / 1024 / 1024).toFixed(1),
-        fileCount: result.manifest.fileCount,
-        categories: result.manifest.categories,
-        durationMs: result.durationMs,
-        pruned: pruned.length > 0 ? pruned : undefined,
+        content: [{ type: "text", text: summary }],
+        details: {
+          path: result.path,
+          sizeBytes: result.sizeBytes,
+          sizeMB: (result.sizeBytes / 1024 / 1024).toFixed(1),
+          fileCount: result.manifest.fileCount,
+          categories: result.manifest.categories,
+          durationMs: result.durationMs,
+          pruned: pruned.length > 0 ? pruned : undefined,
+        },
       };
     },
   });
 
   api.registerTool({
     name: "backup_restore",
+    label: "Restore Backup",
     description:
       "Restore OpenClaw from an encrypted backup archive. Can selectively restore specific categories. Use dryRun to preview.",
     parameters: Type.Object({
@@ -79,80 +92,125 @@ export default function register(api: any) {
         Type.Boolean({ description: "Preview restore without writing files" }),
       ),
     }),
-    handler: async ({
-      archivePath,
-      passphrase,
-      categories,
-      dryRun,
-    }: {
+    async execute(_toolCallId: string, params: {
       archivePath: string;
       passphrase: string;
       categories?: string[];
       dryRun?: boolean;
-    }) => {
-      const result = await restoreBackup(
-        archivePath,
-        passphrase,
-        config,
-        { categories, dryRun },
-        logger,
-      );
+    }) {
+      try {
+        const result = await restoreBackup(
+          params.archivePath,
+          params.passphrase,
+          config,
+          { categories: params.categories, dryRun: params.dryRun },
+          logger,
+        );
 
-      return {
-        manifest: result.manifest,
-        restoredCategories: result.restoredCategories,
-        fileCount: result.fileCount,
-        durationMs: result.durationMs,
-        dryRun: !!dryRun,
-        note: dryRun
-          ? "Dry run — no files were written"
-          : "Restore complete. Restart gateway to apply config changes.",
-      };
+        const prefix = params.dryRun ? "📋 Dry run" : "✅ Restore complete";
+        const summary = [
+          `${prefix}: ${result.fileCount} files from ${result.restoredCategories.join(", ")}`,
+          `📅 Backup created: ${result.manifest.createdAt}`,
+          `🖥 Original host: ${result.manifest.hostname}`,
+          `⏱ Duration: ${result.durationMs}ms`,
+          !params.dryRun ? "\n⚠️ Restart gateway to apply config changes." : "",
+        ].filter(Boolean).join("\n");
+
+        return {
+          content: [{ type: "text", text: summary }],
+          details: {
+            manifest: result.manifest,
+            restoredCategories: result.restoredCategories,
+            fileCount: result.fileCount,
+            durationMs: result.durationMs,
+            dryRun: !!params.dryRun,
+          },
+        };
+      } catch (err: any) {
+        return {
+          content: [{ type: "text", text: `❌ Restore failed: ${err.message}` }],
+          details: { error: err.message },
+        };
+      }
     },
   });
 
   api.registerTool({
     name: "backup_list",
+    label: "List Backups",
     description: "List existing backup archives with sizes and dates.",
     parameters: Type.Object({}),
-    handler: async () => {
+    async execute() {
       const backups = await listBackups(config.backupDir);
+
+      if (backups.length === 0) {
+        return {
+          content: [{ type: "text", text: `📦 No backups found in ${config.backupDir}` }],
+          details: { backupDir: config.backupDir, count: 0, backups: [] },
+        };
+      }
+
+      const lines = backups.map(
+        (b) =>
+          `  ${b.filename}  ${(b.sizeBytes / 1024 / 1024).toFixed(1)}MB  ${b.createdAt.toISOString()}`,
+      );
+      const text = `📦 Backups in ${config.backupDir} (${backups.length}):\n\n${lines.join("\n")}`;
+
       return {
-        backupDir: config.backupDir,
-        count: backups.length,
-        backups: backups.map((b) => ({
-          filename: b.filename,
-          sizeMB: (b.sizeBytes / 1024 / 1024).toFixed(1),
-          createdAt: b.createdAt.toISOString(),
-        })),
+        content: [{ type: "text", text }],
+        details: {
+          backupDir: config.backupDir,
+          count: backups.length,
+          backups: backups.map((b) => ({
+            filename: b.filename,
+            sizeMB: (b.sizeBytes / 1024 / 1024).toFixed(1),
+            createdAt: b.createdAt.toISOString(),
+          })),
+        },
       };
     },
   });
 
   api.registerTool({
     name: "backup_status",
+    label: "Backup Status",
     description:
       "Show backup plugin status: config, last backup, retention policy, available categories.",
     parameters: Type.Object({}),
-    handler: async () => {
+    async execute() {
       const backups = await listBackups(config.backupDir);
       const lastBackup = backups[0];
+      const enabled = CATEGORIES.filter((c) => config.categories[c.id]).map(
+        (c) => `${c.id} (${c.label}${c.sensitive ? " 🔐" : ""})`,
+      );
+
+      const lines = [
+        `📦 Backup Plugin Status`,
+        `━━━━━━━━━━━━━━━━━━━━━━`,
+        `📂 Dir: ${config.backupDir}`,
+        `🗂 Categories: ${enabled.join(", ")}`,
+        `🔄 Retention: ${config.retention.maxBackups} backups, ${config.retention.maxAgeDays} days`,
+        `📊 Total backups: ${backups.length}`,
+        lastBackup
+          ? `📅 Last: ${lastBackup.filename} (${(lastBackup.sizeBytes / 1024 / 1024).toFixed(1)}MB, ${lastBackup.createdAt.toISOString()})`
+          : `📅 Last: none`,
+      ];
 
       return {
-        backupDir: config.backupDir,
-        enabledCategories: CATEGORIES.filter((c) => config.categories[c.id]).map(
-          (c) => `${c.id} (${c.label}${c.sensitive ? " 🔐" : ""})`,
-        ),
-        retention: config.retention,
-        totalBackups: backups.length,
-        lastBackup: lastBackup
-          ? {
-              filename: lastBackup.filename,
-              sizeMB: (lastBackup.sizeBytes / 1024 / 1024).toFixed(1),
-              createdAt: lastBackup.createdAt.toISOString(),
-            }
-          : null,
-        notifications: config.notifications,
+        content: [{ type: "text", text: lines.join("\n") }],
+        details: {
+          backupDir: config.backupDir,
+          enabledCategories: enabled,
+          retention: config.retention,
+          totalBackups: backups.length,
+          lastBackup: lastBackup
+            ? {
+                filename: lastBackup.filename,
+                sizeMB: (lastBackup.sizeBytes / 1024 / 1024).toFixed(1),
+                createdAt: lastBackup.createdAt.toISOString(),
+              }
+            : null,
+        },
       };
     },
   });
@@ -169,16 +227,11 @@ export default function register(api: any) {
         .command("create")
         .description("Create an encrypted backup")
         .option("-p, --passphrase <pass>", "Encryption passphrase")
-        .option(
-          "-c, --categories <cats>",
-          "Comma-separated categories to include",
-        )
+        .option("-c, --categories <cats>", "Comma-separated categories to include")
         .action(async (opts: any) => {
           const pass = opts.passphrase ?? process.env.OPENCLAW_BACKUP_PASSPHRASE;
           if (!pass) {
-            console.error(
-              "Error: passphrase required (--passphrase or OPENCLAW_BACKUP_PASSPHRASE env)",
-            );
+            console.error("Error: passphrase required (--passphrase or OPENCLAW_BACKUP_PASSPHRASE env)");
             process.exit(1);
           }
           if (pass.length < 8) {
@@ -188,68 +241,34 @@ export default function register(api: any) {
 
           const cats = opts.categories?.split(",");
           const effectiveConfig = cats
-            ? {
-                ...config,
-                categories: Object.fromEntries(
-                  CATEGORIES.map((c) => [c.id, cats.includes(c.id)]),
-                ),
-              }
+            ? { ...config, categories: Object.fromEntries(CATEGORIES.map((c) => [c.id, cats.includes(c.id)])) }
             : config;
 
           console.log("Creating backup...");
-          const result = await createBackup(pass, effectiveConfig, {
-            info: (m: string) => console.log(m),
-          });
+          const result = await createBackup(pass, effectiveConfig, { info: (m: string) => console.log(m) });
           console.log(`\n✅ Backup created: ${result.path}`);
-          console.log(
-            `   Size: ${(result.sizeBytes / 1024 / 1024).toFixed(1)}MB | Files: ${result.manifest.fileCount} | Time: ${result.durationMs}ms`,
-          );
+          console.log(`   Size: ${(result.sizeBytes / 1024 / 1024).toFixed(1)}MB | Files: ${result.manifest.fileCount} | Time: ${result.durationMs}ms`);
           console.log(`   Categories: ${result.manifest.categories.join(", ")}`);
 
-          const pruned = await pruneBackups(effectiveConfig, {
-            info: (m: string) => console.log(m),
-          });
-          if (pruned.length > 0) {
-            console.log(`   Pruned ${pruned.length} old backup(s)`);
-          }
+          const pruned = await pruneBackups(effectiveConfig, { info: (m: string) => console.log(m) });
+          if (pruned.length > 0) console.log(`   Pruned ${pruned.length} old backup(s)`);
         });
 
       cmd
         .command("restore <file>")
         .description("Restore from an encrypted backup")
         .option("-p, --passphrase <pass>", "Decryption passphrase")
-        .option(
-          "-c, --categories <cats>",
-          "Comma-separated categories to restore",
-        )
+        .option("-c, --categories <cats>", "Comma-separated categories to restore")
         .option("--dry-run", "Preview without writing files")
         .action(async (file: string, opts: any) => {
           const pass = opts.passphrase ?? process.env.OPENCLAW_BACKUP_PASSPHRASE;
-          if (!pass) {
-            console.error("Error: passphrase required");
-            process.exit(1);
-          }
+          if (!pass) { console.error("Error: passphrase required"); process.exit(1); }
 
           const cats = opts.categories?.split(",");
-          console.log(
-            opts.dryRun ? "Previewing restore..." : "Restoring backup...",
-          );
-          const result = await restoreBackup(
-            file,
-            pass,
-            config,
-            { categories: cats, dryRun: opts.dryRun },
-            { info: (m: string) => console.log(m) },
-          );
-
-          console.log(
-            `\n${opts.dryRun ? "📋 Preview" : "✅ Restored"}: ${result.fileCount} files from ${result.restoredCategories.join(", ")}`,
-          );
-          if (!opts.dryRun) {
-            console.log(
-              "Restart the gateway to apply config changes: sudo supervisorctl restart openclaw",
-            );
-          }
+          console.log(opts.dryRun ? "Previewing restore..." : "Restoring backup...");
+          const result = await restoreBackup(file, pass, config, { categories: cats, dryRun: opts.dryRun }, { info: (m: string) => console.log(m) });
+          console.log(`\n${opts.dryRun ? "📋 Preview" : "✅ Restored"}: ${result.fileCount} files from ${result.restoredCategories.join(", ")}`);
+          if (!opts.dryRun) console.log("Restart the gateway to apply config changes: sudo supervisorctl restart openclaw");
         });
 
       cmd
@@ -257,15 +276,10 @@ export default function register(api: any) {
         .description("List backup archives")
         .action(async () => {
           const backups = await listBackups(config.backupDir);
-          if (backups.length === 0) {
-            console.log("No backups found.");
-            return;
-          }
+          if (backups.length === 0) { console.log("No backups found."); return; }
           console.log(`Backups in ${config.backupDir}:\n`);
           for (const b of backups) {
-            console.log(
-              `  ${b.filename}  ${(b.sizeBytes / 1024 / 1024).toFixed(1)}MB  ${b.createdAt.toISOString()}`,
-            );
+            console.log(`  ${b.filename}  ${(b.sizeBytes / 1024 / 1024).toFixed(1)}MB  ${b.createdAt.toISOString()}`);
           }
         });
 
@@ -273,14 +287,8 @@ export default function register(api: any) {
         .command("prune")
         .description("Remove old backups per retention policy")
         .action(async () => {
-          const pruned = await pruneBackups(config, {
-            info: (m: string) => console.log(m),
-          });
-          console.log(
-            pruned.length > 0
-              ? `Pruned ${pruned.length} backup(s)`
-              : "Nothing to prune",
-          );
+          const pruned = await pruneBackups(config, { info: (m: string) => console.log(m) });
+          console.log(pruned.length > 0 ? `Pruned ${pruned.length} backup(s)` : "Nothing to prune");
         });
     },
     { commands: ["backup"] },
@@ -294,9 +302,7 @@ export default function register(api: any) {
     handler: async () => {
       const backups = await listBackups(config.backupDir);
       const last = backups[0];
-      const enabled = CATEGORIES.filter((c) => config.categories[c.id])
-        .map((c) => c.id)
-        .join(", ");
+      const enabled = CATEGORIES.filter((c) => config.categories[c.id]).map((c) => c.id).join(", ");
 
       return {
         text: last
@@ -306,5 +312,5 @@ export default function register(api: any) {
     },
   });
 
-  logger.info("[backup] Plugin loaded — openclaw backup create|restore|list|prune");
+  logger.info("[ark] Plugin loaded — openclaw backup create|restore|list|prune");
 }

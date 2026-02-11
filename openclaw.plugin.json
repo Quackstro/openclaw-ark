@@ -1,8 +1,8 @@
 {
-  "id": "backup",
-  "name": "OpenClaw Backup",
+  "id": "ark",
+  "name": "Ark",
   "version": "0.1.0",
-  "description": "Encrypted backup & restore for OpenClaw — configs, plugins, brain, wallet, workspace 📦",
+  "description": "Encrypted backup & restore for OpenClaw — preserve and migrate your entire setup 🚢",
   "author": "Quackstro LLC",
   "license": "MIT",
   "kind": "service",
