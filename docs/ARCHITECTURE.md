@@ -104,13 +104,51 @@ The manifest is read during restore to show backup metadata before extracting.
 - **Directory creation:** Missing parent directories are created automatically
 - **Config reload:** Gateway must be restarted after restore to pick up config changes
 
-## Telegram File Delivery
+## File Delivery
 
-When `backup_create` completes, the tool response instructs the agent to include a `MEDIA:` line with the archive path. OpenCore's delivery pipeline parses this token and sends the file via the Telegram Bot API's `sendDocument` method, delivering the `.ocbak` archive as a downloadable document directly in the chat.
+Ark uses two complementary delivery mechanisms to get backup archives to the user:
 
-- **Size limit:** Telegram allows file uploads up to 50MB. Backups exceeding this limit are not sent as documents — the agent reports the local file path instead.
-- **Mime type handling:** `.ocbak` files have no standard mime type, so the delivery pipeline's fallback path routes them to `sendDocument` (rather than `sendPhoto`, `sendAudio`, etc.).
-- **No HTTP routes required:** This approach uses the existing delivery pipeline — no nginx proxy rules or plugin HTTP endpoints needed.
+### 1. Telegram Direct Send (MEDIA: token)
+
+When `backup_create` completes and the archive is under 50MB, the tool response instructs the agent to include a `MEDIA:` line with the archive path. OpenCore's delivery pipeline parses this token and sends the file via the Telegram Bot API's `sendDocument` method, delivering the `.ocbak` archive as a downloadable document directly in the chat.
+
+- **Size limit:** Telegram allows file uploads up to 50MB.
+- **Mime type handling:** `.ocbak` files have no standard mime type, so the delivery pipeline's fallback path routes them to `sendDocument`.
+
+### 2. HTTP Download Link (with automatic nginx proxy)
+
+For all backups, Ark also generates a temporary one-time HTTP download link served from the gateway's internal HTTP server.
+
+**Flow:**
+1. `backup_create` generates a random 64-char hex token
+2. Registers an HTTP handler at `/ark/download/<token>` on the gateway (port 18789)
+3. Detects if nginx is installed and running
+4. If nginx is available and `sudo -n` works, writes a temporary proxy config to `/etc/nginx/conf.d/ark-download-<prefix>.conf` and reloads nginx
+5. Returns the download URL to the agent
+6. After 10 minutes (or after one download), the token is invalidated:
+   - The nginx config file is removed via `sudo rm`
+   - Nginx is reloaded to drop the proxy rule
+   - The in-memory token is deleted
+
+**Nginx config template:**
+```nginx
+server {
+    listen 80;
+    server_name _;
+    location = /ark/download/<token> {
+        proxy_pass http://127.0.0.1:18789/ark/download/<token>;
+        proxy_set_header Host $host;
+        proxy_buffering off;
+    }
+}
+```
+
+**Safety features:**
+- One-time use tokens (invalidated after first download)
+- 10-minute auto-expiry with `setTimeout` + nginx cleanup
+- `nginx -t` validation before reload — rolls back config on failure
+- Passwordless sudo required (`sudo -n`) — skips nginx if not available
+- No persistent state — all tokens are in-memory, cleared on restart
 
 ## Security Considerations
 

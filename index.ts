@@ -11,11 +11,21 @@
 import { Type } from "@sinclair/typebox";
 import { parseConfig, CATEGORIES } from "./src/config.js";
 import { createBackup, restoreBackup, listBackups, pruneBackups } from "./src/engine.js";
+import { createDownloadLink, createDownloadHandler, cleanupAllDownloads } from "./src/download.js";
 
 export default function register(api: any) {
   const logger = api.logger ?? console;
   const rawCfg = api.config?.plugins?.entries?.ark?.config ?? {};
   const config = parseConfig(rawCfg);
+
+  // ─── Resolve gateway port for download links ───────────────────────────
+  const gatewayPort: number =
+    api.config?.gateway?.port ??
+    (process.env.OPENCLAW_GATEWAY_PORT ? parseInt(process.env.OPENCLAW_GATEWAY_PORT, 10) : 18789);
+
+  // ─── Register HTTP handler for download routes ─────────────────────────
+  const downloadHandler = createDownloadHandler(logger);
+  api.registerHttpHandler?.((req: any, res: any) => downloadHandler(req, res));
 
   // ─── Agent Tools ───────────────────────────────────────────────────────
 
@@ -55,15 +65,44 @@ export default function register(api: any) {
       const sizeMB = result.sizeBytes / 1024 / 1024;
       const TELEGRAM_UPLOAD_LIMIT_MB = 50;
 
+      // Generate a temporary download link
+      let downloadInfo: { url: string; expiresAt: number; hasNginxProxy: boolean } | null = null;
+      try {
+        downloadInfo = await createDownloadLink(result.path, {
+          gatewayPort,
+          expiryMs: 10 * 60 * 1000, // 10 minutes
+          logger,
+        });
+      } catch (dlErr: any) {
+        logger.warn(`[ark] failed to create download link: ${dlErr.message}`);
+      }
+
+      const downloadLines: string[] = [];
+      if (downloadInfo) {
+        const expiresIn = Math.round((downloadInfo.expiresAt - Date.now()) / 60000);
+        if (downloadInfo.hasNginxProxy) {
+          downloadLines.push(`\n🔗 Download link (expires in ${expiresIn}min, one-time use):`);
+          downloadLines.push(`   http://<your-server>${downloadInfo.url}`);
+        } else {
+          downloadLines.push(`\n🔗 Download link (expires in ${expiresIn}min, one-time use, gateway port only):`);
+          downloadLines.push(`   http://localhost:${gatewayPort}${downloadInfo.url}`);
+        }
+      }
+
+      // Also include MEDIA: line for Telegram direct send if under limit
+      if (sizeMB <= TELEGRAM_UPLOAD_LIMIT_MB) {
+        downloadLines.push(`\n📎 Send the backup file to the user by including this line in your reply:\nMEDIA: ${result.path}`);
+      } else {
+        downloadLines.push(`\n⚠️ Backup exceeds ${TELEGRAM_UPLOAD_LIMIT_MB}MB Telegram upload limit.`);
+      }
+
       const summary = [
         `✅ Backup created: ${result.path}`,
         `📏 Size: ${sizeMB.toFixed(1)}MB | Files: ${result.manifest.fileCount}`,
         `🗂 Categories: ${result.manifest.categories.join(", ")}`,
         `⏱ Duration: ${result.durationMs}ms`,
         pruned.length > 0 ? `🗑 Pruned ${pruned.length} old backup(s)` : "",
-        sizeMB <= TELEGRAM_UPLOAD_LIMIT_MB
-          ? `\n📎 Send the backup file to the user by including this line in your reply:\nMEDIA: ${result.path}`
-          : `\n⚠️ Backup exceeds ${TELEGRAM_UPLOAD_LIMIT_MB}MB Telegram upload limit. File available locally at: ${result.path}`,
+        ...downloadLines,
       ].filter(Boolean).join("\n");
 
       return {
@@ -76,7 +115,9 @@ export default function register(api: any) {
           categories: result.manifest.categories,
           durationMs: result.durationMs,
           pruned: pruned.length > 0 ? pruned : undefined,
-          downloadable: sizeMB <= TELEGRAM_UPLOAD_LIMIT_MB,
+          downloadUrl: downloadInfo?.url ?? null,
+          downloadExpiresAt: downloadInfo?.expiresAt ?? null,
+          hasNginxProxy: downloadInfo?.hasNginxProxy ?? false,
         },
       };
     },
