@@ -55,99 +55,20 @@ export default function register(api: any) {
 
   // ─── Agent Tools ───────────────────────────────────────────────────────
 
+  // backup_create and backup_restore are slash-command-only for passphrase security.
+  // The slash command auto-deletes the user's message. LLM tool calls cannot delete
+  // the user's original message, so we redirect to the slash command instead.
+
   api.registerTool({
     name: "backup_create",
     label: "Create Backup",
     description:
-      "Create an encrypted backup of OpenClaw configs, plugins, brain, wallet, and workspace. Returns backup path and stats.",
-    parameters: Type.Object({
-      passphrase: Type.String({ description: "Encryption passphrase (8+ chars)" }),
-      categories: Type.Optional(
-        Type.Array(Type.String(), {
-          description: "Specific categories to back up (default: all enabled)",
-        }),
-      ),
-    }),
-    async execute(_toolCallId: string, params: { passphrase: string; categories?: string[] }) {
-      if (params.passphrase.length < 8) {
-        return {
-          content: [{ type: "text", text: "Error: Passphrase must be at least 8 characters." }],
-          details: { error: "passphrase_too_short" },
-        };
-      }
-
-      const effectiveConfig = params.categories
-        ? {
-            ...config,
-            categories: Object.fromEntries(
-              CATEGORIES.map((c) => [c.id, params.categories!.includes(c.id)]),
-            ),
-          }
-        : config;
-
-      const result = await createBackup(params.passphrase, effectiveConfig, logger);
-      const pruned = await pruneBackups(effectiveConfig, logger);
-
-      const sizeMB = result.sizeBytes / 1024 / 1024;
-      const TELEGRAM_UPLOAD_LIMIT_MB = 50;
-
-      // Generate a temporary download link
-      let downloadInfo: { url: string; expiresAt: number; hasNginxProxy: boolean } | null = null;
-      try {
-        downloadInfo = await createDownloadLink(result.path, {
-          gatewayPort,
-          expiryMs: 10 * 60 * 1000, // 10 minutes
-          logger,
-        });
-      } catch (dlErr: any) {
-        logger.warn(`[ark] failed to create download link: ${dlErr.message}`);
-      }
-
-      // Build download URL
-      let downloadUrl: string | null = null;
-      let downloadExpiresIn = 0;
-      if (downloadInfo) {
-        downloadExpiresIn = Math.round((downloadInfo.expiresAt - Date.now()) / 60000);
-        const publicHost = process.env.OPENCLAW_PUBLIC_HOST || "20-51-254-213.sslip.io";
-        downloadUrl = `https://${publicHost}${downloadInfo.url}`;
-      }
-
-      // Build MEDIA: line for Telegram if under limit
-      const mediaLine = sizeMB <= TELEGRAM_UPLOAD_LIMIT_MB
-        ? `MEDIA: ${result.path}`
-        : null;
-
-      const summary = [
-        `✅ Backup created: ${result.path}`,
-        `📏 Size: ${sizeMB.toFixed(1)}MB | Files: ${result.manifest.fileCount}`,
-        `🗂 Categories: ${result.manifest.categories.join(", ")}`,
-        `⏱ Duration: ${result.durationMs}ms`,
-        pruned.length > 0 ? `🗑 Pruned ${pruned.length} old backup(s)` : "",
-        sizeMB > TELEGRAM_UPLOAD_LIMIT_MB ? `⚠️ Backup exceeds ${TELEGRAM_UPLOAD_LIMIT_MB}MB Telegram upload limit.` : "",
-        mediaLine ? `\n📎 Send the file via Telegram by including this line verbatim in your reply:\n${mediaLine}` : "",
-        downloadUrl ? `\n📥 Download link (${downloadExpiresIn}min, one-time): ${downloadUrl}` : "",
-      ].filter(Boolean).join("\n");
-
-      // Build inline URL button for download link (rendered by Telegram, LLM can't strip it)
-      const buttons = downloadUrl
-        ? [[{ text: `📥 Download Backup (${downloadExpiresIn}min)`, url: downloadUrl }]]
-        : undefined;
-
+      "DO NOT call this tool. Backups require a passphrase which must not appear in chat. " +
+      "Instead, instruct the user to run: /ark backup <passphrase>",
+    parameters: Type.Object({}),
+    async execute() {
       return {
-        content: [{ type: "text", text: summary }],
-        channelData: buttons ? { telegram: { buttons } } : undefined,
-        details: {
-          path: result.path,
-          sizeBytes: result.sizeBytes,
-          sizeMB: sizeMB.toFixed(1),
-          fileCount: result.manifest.fileCount,
-          categories: result.manifest.categories,
-          durationMs: result.durationMs,
-          pruned: pruned.length > 0 ? pruned : undefined,
-          downloadUrl: downloadInfo?.url ?? null,
-          downloadExpiresAt: downloadInfo?.expiresAt ?? null,
-          hasNginxProxy: downloadInfo?.hasNginxProxy ?? false,
-        },
+        content: [{ type: "text", text: "Backups must be created via slash command for passphrase security. Tell the user to run: /ark backup <passphrase>" }],
       };
     },
   });
@@ -156,59 +77,13 @@ export default function register(api: any) {
     name: "backup_restore",
     label: "Restore Backup",
     description:
-      "Restore OpenClaw from an encrypted backup archive. Can selectively restore specific categories. Use dryRun to preview.",
-    parameters: Type.Object({
-      archivePath: Type.String({ description: "Path to .ocbak backup file" }),
-      passphrase: Type.String({ description: "Decryption passphrase" }),
-      categories: Type.Optional(
-        Type.Array(Type.String(), {
-          description: "Specific categories to restore (default: all)",
-        }),
-      ),
-      dryRun: Type.Optional(
-        Type.Boolean({ description: "Preview restore without writing files" }),
-      ),
-    }),
-    async execute(_toolCallId: string, params: {
-      archivePath: string;
-      passphrase: string;
-      categories?: string[];
-      dryRun?: boolean;
-    }) {
-      try {
-        const result = await restoreBackup(
-          params.archivePath,
-          params.passphrase,
-          config,
-          { categories: params.categories, dryRun: params.dryRun },
-          logger,
-        );
-
-        const prefix = params.dryRun ? "📋 Dry run" : "✅ Restore complete";
-        const summary = [
-          `${prefix}: ${result.fileCount} files from ${result.restoredCategories.join(", ")}`,
-          `📅 Backup created: ${result.manifest.createdAt}`,
-          `🖥 Original host: ${result.manifest.hostname}`,
-          `⏱ Duration: ${result.durationMs}ms`,
-          !params.dryRun ? "\n⚠️ Restart gateway to apply config changes." : "",
-        ].filter(Boolean).join("\n");
-
-        return {
-          content: [{ type: "text", text: summary }],
-          details: {
-            manifest: result.manifest,
-            restoredCategories: result.restoredCategories,
-            fileCount: result.fileCount,
-            durationMs: result.durationMs,
-            dryRun: !!params.dryRun,
-          },
-        };
-      } catch (err: any) {
-        return {
-          content: [{ type: "text", text: `❌ Restore failed: ${err.message}` }],
-          details: { error: err.message },
-        };
-      }
+      "DO NOT call this tool. Restores require a passphrase which must not appear in chat. " +
+      "Instead, instruct the user to run: /ark restore <file> <passphrase>",
+    parameters: Type.Object({}),
+    async execute() {
+      return {
+        content: [{ type: "text", text: "Restores must be done via slash command for passphrase security. Tell the user to run: /ark restore <file> <passphrase>" }],
+      };
     },
   });
 
@@ -464,9 +339,53 @@ export default function register(api: any) {
         }
 
         case "restore": {
-          return {
-            text: "⚠️ Restore requires the agent tools for safety.\n\nAsk me: \"Restore from the latest backup with passphrase <pass>\"\n\nOr use CLI: openclaw backup restore <file> -p <pass>",
-          };
+          // /ark restore <passphrase> — restore from latest
+          // /ark restore <file> <passphrase> — restore from specific file
+          const restoreParts = subArgs.trim().split(/\s+/);
+          if (restoreParts.length < 1 || !restoreParts[0]) {
+            return { text: "⚠️ Usage: /ark restore <passphrase>\nOr: /ark restore <filename> <passphrase>" };
+          }
+
+          // Delete user's message — it contains the passphrase
+          if (ctx.chatId && ctx.messageId) {
+            deleteTelegramMessage(ctx.chatId, ctx.messageId).catch(() => {});
+          }
+
+          let archivePath: string;
+          let passphrase: string;
+
+          if (restoreParts.length === 1) {
+            // Single arg = passphrase, use latest backup
+            passphrase = restoreParts[0];
+            const backups = await listBackups(config.backupDir);
+            if (backups.length === 0) return { text: "📦 No backups found to restore." };
+            archivePath = backups[0].path;
+          } else {
+            // Two args = filename + passphrase
+            const filename = restoreParts[0];
+            passphrase = restoreParts.slice(1).join(" ");
+            const backups = await listBackups(config.backupDir);
+            const match = backups.find((b) => b.filename === filename || b.path === filename);
+            if (!match) return { text: `❌ Backup not found: ${filename}\nUse /ark list to see available backups.` };
+            archivePath = match.path;
+          }
+
+          try {
+            const result = await restoreBackup(archivePath, passphrase, config, {}, logger);
+            return {
+              text: [
+                `✅ Restore complete!`,
+                `📦 ${archivePath.split("/").pop()}`,
+                `📂 ${result.fileCount} files from ${result.restoredCategories.join(", ")}`,
+                `📅 Backup created: ${result.manifest.createdAt}`,
+                `⏱ Duration: ${result.durationMs}ms`,
+                "",
+                "⚠️ Restart gateway to apply config changes.",
+              ].join("\n"),
+            };
+          } catch (err: any) {
+            return { text: `❌ Restore failed: ${err.message}` };
+          }
         }
 
         case "prune": {
@@ -489,8 +408,9 @@ export default function register(api: any) {
               "━━━━━━━━━━━━━━━━━━━━━━",
               "  /ark — Status overview",
               "  /ark backup <passphrase> — Create encrypted backup",
+              "  /ark restore <passphrase> — Restore from latest backup",
+              "  /ark restore <file> <passphrase> — Restore specific backup",
               "  /ark list — List all backups",
-              "  /ark restore — Restore instructions",
               "  /ark prune — Remove old backups",
               "  /ark help — This message",
               "",
