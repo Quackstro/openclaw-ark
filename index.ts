@@ -52,12 +52,18 @@ export default function register(api: any) {
       const result = await createBackup(params.passphrase, effectiveConfig, logger);
       const pruned = await pruneBackups(effectiveConfig, logger);
 
+      const sizeMB = result.sizeBytes / 1024 / 1024;
+      const TELEGRAM_UPLOAD_LIMIT_MB = 50;
+
       const summary = [
         `✅ Backup created: ${result.path}`,
-        `📏 Size: ${(result.sizeBytes / 1024 / 1024).toFixed(1)}MB | Files: ${result.manifest.fileCount}`,
+        `📏 Size: ${sizeMB.toFixed(1)}MB | Files: ${result.manifest.fileCount}`,
         `🗂 Categories: ${result.manifest.categories.join(", ")}`,
         `⏱ Duration: ${result.durationMs}ms`,
         pruned.length > 0 ? `🗑 Pruned ${pruned.length} old backup(s)` : "",
+        sizeMB <= TELEGRAM_UPLOAD_LIMIT_MB
+          ? `\n📎 Send the backup file to the user by including this line in your reply:\nMEDIA: ${result.path}`
+          : `\n⚠️ Backup exceeds ${TELEGRAM_UPLOAD_LIMIT_MB}MB Telegram upload limit. File available locally at: ${result.path}`,
       ].filter(Boolean).join("\n");
 
       return {
@@ -65,11 +71,12 @@ export default function register(api: any) {
         details: {
           path: result.path,
           sizeBytes: result.sizeBytes,
-          sizeMB: (result.sizeBytes / 1024 / 1024).toFixed(1),
+          sizeMB: sizeMB.toFixed(1),
           fileCount: result.manifest.fileCount,
           categories: result.manifest.categories,
           durationMs: result.durationMs,
           pruned: pruned.length > 0 ? pruned : undefined,
+          downloadable: sizeMB <= TELEGRAM_UPLOAD_LIMIT_MB,
         },
       };
     },
