@@ -29,7 +29,11 @@
           "extensions":  { "type": "boolean", "default": true },
           "workspace":   { "type": "boolean", "default": true },
           "devices":     { "type": "boolean", "default": true },
-          "identity":    { "type": "boolean", "default": true }
+          "identity":    { "type": "boolean", "default": true },
+          "telegram":    { "type": "boolean", "default": true },
+          "agents":      { "type": "boolean", "default": true },
+          "subagents":   { "type": "boolean", "default": true },
+          "log-monitor": { "type": "boolean", "default": true }
         }
       },
       "retention": {

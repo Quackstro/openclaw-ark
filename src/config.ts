@@ -2,6 +2,7 @@
  * Backup config parser and defaults.
  */
 
+import { readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 
@@ -11,6 +12,26 @@ export interface BackupCategory {
   sensitive: boolean;
   /** Resolve the absolute path(s) for this category */
   paths: (ocDir: string, workspace: string) => string[];
+}
+
+/**
+ * Discover all agent workspace directories.
+ * Includes the primary workspace (~/clawd or ~/.openclaw/workspace)
+ * plus any workspace-* directories under ~/.openclaw/.
+ */
+function discoverWorkspaces(ocDir: string, primaryWorkspace: string): string[] {
+  const paths = [primaryWorkspace];
+  try {
+    const entries = readdirSync(ocDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory() && entry.name.startsWith("workspace-")) {
+        paths.push(resolve(ocDir, entry.name));
+      }
+    }
+  } catch {
+    // ocDir not readable
+  }
+  return paths;
 }
 
 export const CATEGORIES: BackupCategory[] = [
@@ -58,9 +79,9 @@ export const CATEGORIES: BackupCategory[] = [
   },
   {
     id: "workspace",
-    label: "Agent Workspace",
+    label: "Agent Workspaces",
     sensitive: false,
-    paths: (_oc, ws) => [ws],
+    paths: (oc, ws) => discoverWorkspaces(oc, ws),
   },
   {
     id: "devices",
@@ -73,6 +94,30 @@ export const CATEGORIES: BackupCategory[] = [
     label: "Agent Identity",
     sensitive: false,
     paths: (oc) => [resolve(oc, "identity")],
+  },
+  {
+    id: "telegram",
+    label: "Telegram State",
+    sensitive: false,
+    paths: (oc) => [resolve(oc, "telegram")],
+  },
+  {
+    id: "agents",
+    label: "Agent Sessions",
+    sensitive: false,
+    paths: (oc) => [resolve(oc, "agents")],
+  },
+  {
+    id: "subagents",
+    label: "Subagent State",
+    sensitive: false,
+    paths: (oc) => [resolve(oc, "subagents")],
+  },
+  {
+    id: "log-monitor",
+    label: "Log Monitor State",
+    sensitive: false,
+    paths: (oc) => [resolve(oc, "log-monitor")],
   },
 ];
 
