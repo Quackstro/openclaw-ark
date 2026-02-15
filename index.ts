@@ -77,24 +77,19 @@ export default function register(api: any) {
         logger.warn(`[ark] failed to create download link: ${dlErr.message}`);
       }
 
-      const downloadLines: string[] = [];
+      // Build download URL
+      let downloadUrl: string | null = null;
+      let downloadExpiresIn = 0;
       if (downloadInfo) {
-        const expiresIn = Math.round((downloadInfo.expiresAt - Date.now()) / 60000);
-        if (downloadInfo.hasNginxProxy) {
-          downloadLines.push(`\n🔗 Download link (expires in ${expiresIn}min, one-time use):`);
-          downloadLines.push(`   http://<your-server>${downloadInfo.url}`);
-        } else {
-          downloadLines.push(`\n🔗 Download link (expires in ${expiresIn}min, one-time use, gateway port only):`);
-          downloadLines.push(`   http://localhost:${gatewayPort}${downloadInfo.url}`);
-        }
+        downloadExpiresIn = Math.round((downloadInfo.expiresAt - Date.now()) / 60000);
+        const publicHost = process.env.OPENCLAW_PUBLIC_HOST || "20-51-254-213.sslip.io";
+        downloadUrl = `https://${publicHost}${downloadInfo.url}`;
       }
 
-      // Also include MEDIA: line for Telegram direct send if under limit
-      if (sizeMB <= TELEGRAM_UPLOAD_LIMIT_MB) {
-        downloadLines.push(`\n📎 Send the backup file to the user by including this line in your reply:\nMEDIA: ${result.path}`);
-      } else {
-        downloadLines.push(`\n⚠️ Backup exceeds ${TELEGRAM_UPLOAD_LIMIT_MB}MB Telegram upload limit.`);
-      }
+      // Build MEDIA: line for Telegram if under limit
+      const mediaLine = sizeMB <= TELEGRAM_UPLOAD_LIMIT_MB
+        ? `MEDIA: ${result.path}`
+        : null;
 
       const summary = [
         `✅ Backup created: ${result.path}`,
@@ -102,11 +97,19 @@ export default function register(api: any) {
         `🗂 Categories: ${result.manifest.categories.join(", ")}`,
         `⏱ Duration: ${result.durationMs}ms`,
         pruned.length > 0 ? `🗑 Pruned ${pruned.length} old backup(s)` : "",
-        ...downloadLines,
+        sizeMB > TELEGRAM_UPLOAD_LIMIT_MB ? `⚠️ Backup exceeds ${TELEGRAM_UPLOAD_LIMIT_MB}MB Telegram upload limit.` : "",
+        mediaLine ? `\n📎 Send the file via Telegram by including this line verbatim in your reply:\n${mediaLine}` : "",
+        downloadUrl ? `\n📥 Download link (${downloadExpiresIn}min, one-time): ${downloadUrl}` : "",
       ].filter(Boolean).join("\n");
+
+      // Build inline URL button for download link (rendered by Telegram, LLM can't strip it)
+      const buttons = downloadUrl
+        ? [[{ text: `📥 Download Backup (${downloadExpiresIn}min)`, url: downloadUrl }]]
+        : undefined;
 
       return {
         content: [{ type: "text", text: summary }],
+        channelData: buttons ? { telegram: { buttons } } : undefined,
         details: {
           path: result.path,
           sizeBytes: result.sizeBytes,
@@ -376,15 +379,44 @@ export default function register(api: any) {
           try {
             const result = await createBackup(passphrase, config, logger);
             const pruned = await pruneBackups(config, logger);
-            return {
-              text: [
-                `✅ Backup created!`,
-                `📦 ${result.path.split("/").pop()}`,
-                `📏 ${(result.sizeBytes / 1024 / 1024).toFixed(1)}MB | ${result.manifest.fileCount} files | ${result.durationMs}ms`,
-                `🗂 ${result.manifest.categories.join(", ")}`,
-                pruned.length > 0 ? `🗑 Pruned ${pruned.length} old backup(s)` : "",
-              ].filter(Boolean).join("\n"),
-            };
+            const sizeMB = result.sizeBytes / 1024 / 1024;
+
+            // Generate download link
+            let downloadInfo: { url: string; expiresAt: number; hasNginxProxy: boolean } | null = null;
+            try {
+              downloadInfo = await createDownloadLink(result.path, {
+                gatewayPort,
+                expiryMs: 10 * 60 * 1000,
+                logger,
+              });
+              logger.info(`[ark] download link created: ${JSON.stringify(downloadInfo)}`);
+            } catch (dlErr: any) {
+              logger.error(`[ark] download link failed: ${dlErr.message}\n${dlErr.stack}`);
+            }
+
+            const text = [
+              `✅ Backup created!`,
+              `📦 ${result.path.split("/").pop()}`,
+              `📏 ${sizeMB.toFixed(1)}MB | ${result.manifest.fileCount} files | ${result.durationMs}ms`,
+              `🗂 ${result.manifest.categories.join(", ")}`,
+              pruned.length > 0 ? `🗑 Pruned ${pruned.length} old backup(s)` : "",
+            ].filter(Boolean).join("\n");
+
+            // Build download button if link available
+            logger.info(`[ark] downloadInfo: ${JSON.stringify(downloadInfo)}`);
+            const reply: any = { text };
+            if (downloadInfo) {
+              const expiresIn = Math.round((downloadInfo.expiresAt - Date.now()) / 60000);
+              const publicHost = process.env.OPENCLAW_PUBLIC_HOST || "20-51-254-213.sslip.io";
+              const fullUrl = `https://${publicHost}${downloadInfo.url}`;
+              reply.channelData = {
+                telegram: {
+                  buttons: [[{ text: `📥 Download Backup (${expiresIn}min)`, url: fullUrl }]],
+                },
+              };
+            }
+
+            return reply;
           } catch (err: any) {
             return { text: `❌ Backup failed: ${err.message}` };
           }

@@ -52,13 +52,26 @@ const expiryTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 // ─── Nginx Detection & Management ────────────────────────────────────────
 
-async function isNginxInstalled(): Promise<boolean> {
-  try {
-    await execFileAsync("which", ["nginx"]);
-    return true;
-  } catch {
-    return false;
+const NGINX_BIN_CANDIDATES = ["/usr/sbin/nginx", "/usr/bin/nginx", "/usr/local/bin/nginx", "nginx"];
+
+let resolvedNginxBin: string | null = null;
+
+async function findNginxBin(): Promise<string | null> {
+  if (resolvedNginxBin) return resolvedNginxBin;
+  for (const candidate of NGINX_BIN_CANDIDATES) {
+    try {
+      await execFileAsync(candidate, ["-v"]);
+      resolvedNginxBin = candidate;
+      return candidate;
+    } catch {
+      // try next
+    }
   }
+  return null;
+}
+
+async function isNginxInstalled(): Promise<boolean> {
+  return (await findNginxBin()) !== null;
 }
 
 async function isNginxRunning(): Promise<boolean> {
@@ -167,9 +180,11 @@ async function addNginxRoute(token: string, gatewayPort: number, logger: Downloa
       proc.stdin?.end();
     });
 
+    const nginxBin = resolvedNginxBin ?? "nginx";
+
     // Test nginx config before reload
     try {
-      await execFileAsync("sudo", ["nginx", "-t"]);
+      await execFileAsync("sudo", [nginxBin, "-t"]);
     } catch (testErr: any) {
       logger?.error(`[ark-download] nginx config test failed — removing: ${testErr.stderr ?? testErr.message}`);
       await execFileAsync("sudo", ["rm", "-f", confPath]).catch(() => {});
@@ -177,7 +192,7 @@ async function addNginxRoute(token: string, gatewayPort: number, logger: Downloa
     }
 
     // Reload nginx
-    await execFileAsync("sudo", ["nginx", "-s", "reload"]);
+    await execFileAsync("sudo", [nginxBin, "-s", "reload"]);
     logger?.info(`[ark-download] nginx proxy added: ${confPath}`);
     return confPath;
   } catch (err: any) {
@@ -191,12 +206,13 @@ async function removeNginxRoute(confPath: string, logger: DownloadServerOptions[
   try {
     await execFileAsync("sudo", ["rm", "-f", confPath]);
     // Test config is still valid
+    const nginxBin = resolvedNginxBin ?? "nginx";
     try {
-      await execFileAsync("sudo", ["nginx", "-t"]);
+      await execFileAsync("sudo", [nginxBin, "-t"]);
     } catch {
       // Config test failed — nothing we can do, the file is already removed
     }
-    await execFileAsync("sudo", ["nginx", "-s", "reload"]);
+    await execFileAsync("sudo", [nginxBin, "-s", "reload"]);
     logger?.info(`[ark-download] nginx proxy removed: ${confPath}`);
   } catch (err: any) {
     logger?.warn(`[ark-download] failed to remove nginx route: ${err.message}`);
@@ -243,9 +259,6 @@ export async function createDownloadLink(
   const token = generateToken();
   const expiresAt = Date.now() + expiryMs;
 
-  // Set up nginx proxy (if available)
-  const nginxConfPath = await addNginxRoute(token, gatewayPort, logger);
-
   const entry: DownloadToken = {
     token,
     filePath,
@@ -253,7 +266,7 @@ export async function createDownloadLink(
     expiresAt,
     oneTime: true,
     consumed: false,
-    nginxConfPath,
+    nginxConfPath: null,
   };
 
   activeTokens.set(token, entry);
@@ -267,13 +280,13 @@ export async function createDownloadLink(
 
   const url = `${ARK_ROUTE_PREFIX}/${token}`;
 
-  logger?.info(`[ark-download] link created: ${url} (expires in ${expiryMs / 1000}s, nginx=${!!nginxConfPath})`);
+  logger?.info(`[ark-download] link created: ${url} (expires in ${expiryMs / 1000}s)`);
 
   return {
     token,
     url,
     expiresAt,
-    hasNginxProxy: !!nginxConfPath,
+    hasNginxProxy: true, // permanent nginx proxy assumed
   };
 }
 
