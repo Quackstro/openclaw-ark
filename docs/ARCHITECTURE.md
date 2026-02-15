@@ -104,6 +104,14 @@ The manifest is read during restore to show backup metadata before extracting.
 - **Directory creation:** Missing parent directories are created automatically
 - **Config reload:** Gateway must be restarted after restore to pick up config changes
 
+## Telegram File Delivery
+
+When `backup_create` completes, the tool response instructs the agent to include a `MEDIA:` line with the archive path. OpenCore's delivery pipeline parses this token and sends the file via the Telegram Bot API's `sendDocument` method, delivering the `.ocbak` archive as a downloadable document directly in the chat.
+
+- **Size limit:** Telegram allows file uploads up to 50MB. Backups exceeding this limit are not sent as documents — the agent reports the local file path instead.
+- **Mime type handling:** `.ocbak` files have no standard mime type, so the delivery pipeline's fallback path routes them to `sendDocument` (rather than `sendPhoto`, `sendAudio`, etc.).
+- **No HTTP routes required:** This approach uses the existing delivery pipeline — no nginx proxy rules or plugin HTTP endpoints needed.
+
 ## Security Considerations
 
 - Archives contain **sensitive data** (API keys, wallet keys, OAuth tokens)

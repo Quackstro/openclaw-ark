@@ -11,6 +11,7 @@
 - **Agent tools** — `backup_create`, `backup_restore`, `backup_list`, `backup_status`
 - **CLI commands** — `openclaw backup create|restore|list|prune`
 - **Slash commands** — `/ark`, `/ark backup`, `/ark list`, `/ark restore`, `/ark prune`, `/ark help`
+- **Telegram file delivery** — backups under 50MB are sent as downloadable Telegram documents automatically
 - **Zero external dependencies** — uses Node.js built-in crypto, zlib, and a minimal tar implementation
 
 ## Install
