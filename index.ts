@@ -23,6 +23,32 @@ export default function register(api: any) {
     api.config?.gateway?.port ??
     (process.env.OPENCLAW_GATEWAY_PORT ? parseInt(process.env.OPENCLAW_GATEWAY_PORT, 10) : 18789);
 
+  // ─── Resolve Telegram bot token for message deletion ──────────────────
+  const telegramAccounts = (api.config?.channels?.telegram as any)?.accounts ?? {};
+  const defaultBotToken: string | undefined =
+    (Object.values(telegramAccounts).find((a: any) => a?.botToken) as any)?.botToken ??
+    api.config?.channels?.telegram?.botToken;
+
+  async function deleteTelegramMessage(chatId: string, messageId: string): Promise<boolean> {
+    if (!defaultBotToken || !chatId || !messageId) return false;
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${defaultBotToken}/deleteMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chatId, message_id: Number(messageId) }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!res.ok) {
+        logger.warn(`[ark] deleteMessage failed (${res.status})`);
+        return false;
+      }
+      return true;
+    } catch (err: any) {
+      logger.warn(`[ark] deleteMessage error: ${err.message}`);
+      return false;
+    }
+  }
+
   // ─── Register HTTP handler for download routes ─────────────────────────
   const downloadHandler = createDownloadHandler(logger);
   api.registerHttpHandler?.((req: any, res: any) => downloadHandler(req, res));
@@ -376,6 +402,12 @@ export default function register(api: any) {
           if (!passphrase || passphrase.length < 8) {
             return { text: "⚠️ Usage: /ark backup <passphrase>\nPassphrase must be at least 8 characters." };
           }
+
+          // Delete the user's message immediately — it contains the passphrase
+          if (ctx.chatId && ctx.messageId) {
+            deleteTelegramMessage(ctx.chatId, ctx.messageId).catch(() => {});
+          }
+
           try {
             const result = await createBackup(passphrase, config, logger);
             const pruned = await pruneBackups(config, logger);
