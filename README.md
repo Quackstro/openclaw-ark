@@ -6,7 +6,7 @@
 
 - **AES-256-GCM encryption** with PBKDF2 key derivation (600K iterations)
 - **Selective backup/restore** — choose which categories to include
-- **10 backup categories**: config, credentials, wallet, brain, doc-rag, cron, extensions, workspace, devices, identity
+- **14 backup categories**: config, credentials, wallet, brain, doc-rag, cron, extensions, workspace (all agents), devices, identity, telegram, agents, subagents, log-monitor
 - **Retention policy** — auto-prune old backups by count or age
 - **Agent tools** — `backup_create`, `backup_restore`, `backup_list`, `backup_status`
 - **CLI commands** — `openclaw backup create|restore|list|prune`
@@ -96,9 +96,13 @@ openclaw backup prune
             docrag: true,
             cron: true,
             extensions: true,
-            workspace: true,
+            workspace: true,       // all agent workspaces (auto-discovered)
             devices: true,
-            identity: true
+            identity: true,
+            telegram: true,
+            agents: true,
+            subagents: true,
+            "log-monitor": true
           },
           retention: {
             maxBackups: 5,
@@ -127,9 +131,13 @@ openclaw backup prune
 | `docrag` | Ingested documents + embeddings | No |
 | `cron` | Cron job definitions + run history | No |
 | `extensions` | Installed plugins (source code) | No |
-| `workspace` | Agent workspace (AGENTS.md, memory/, scripts/) | Mixed |
+| `workspace` | All agent workspaces (auto-discovers `workspace-*` dirs) | Mixed |
 | `devices` | Paired device configs | No |
 | `identity` | Agent identity data | No |
+| `telegram` | Telegram update offsets (prevents reprocessing) | No |
+| `agents` | Agent session state | No |
+| `subagents` | Subagent run state | No |
+| `log-monitor` | Log monitor cursor + issue registry | No |
 
 ## Archive Format (.ocbak)
 

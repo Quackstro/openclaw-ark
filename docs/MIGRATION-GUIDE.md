@@ -96,9 +96,13 @@ sudo supervisorctl restart openclaw
 | Doc-RAG | Documents + embeddings | Full document store |
 | Cron | Job definitions + history | Jobs resume on restart |
 | Extensions | Plugin source code | `node_modules` excluded — reinstall |
-| Workspace | AGENTS.md, memory/, scripts/ | Full workspace state |
+| Workspace | All agent workspaces (main + custom) | Auto-discovers `workspace-*` dirs |
 | Devices | Paired device configs | May need re-pairing |
 | Identity | Agent identity | Preserves agent name/persona |
+| Telegram | Update offsets per account | Prevents reprocessing old messages |
+| Agents | Agent session state | Session continuity |
+| Subagents | Subagent run history | Run state preservation |
+| Log Monitor | Cursor + issue registry | Monitoring state continuity |
 
 ## What Doesn't Transfer
 

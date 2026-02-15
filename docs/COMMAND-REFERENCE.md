@@ -15,7 +15,7 @@ Show backup status overview.
 📦 Last: openclaw-backup-2026-02-11T01-00-00.ocbak
 📏 12.3MB | 2026-02-11T01:00:00.000Z
 📂 2 total
-🗂 Categories: config, credentials, wallet, brain, docrag, cron, extensions, workspace, devices, identity
+🗂 Categories: config, credentials, wallet, brain, docrag, cron, extensions, workspace, devices, identity, telegram, agents, subagents, log-monitor
 ```
 
 ---

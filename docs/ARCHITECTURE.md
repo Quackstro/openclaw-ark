@@ -53,9 +53,13 @@ Each category maps to specific paths on the filesystem:
 | `docrag` | `~/.openclaw/docrag/` | Ingested documents, embeddings, uploads |
 | `cron` | `~/.openclaw/cron/` | Cron job definitions, run history |
 | `extensions` | `~/.openclaw/extensions/` | All installed plugins (source + node_modules skipped) |
-| `workspace` | `~/clawd/` | Agent workspace (AGENTS.md, memory/, scripts/, etc.) |
+| `workspace` | `~/clawd/` + `~/.openclaw/workspace-*/` | All agent workspaces (auto-discovered) |
 | `devices` | `~/.openclaw/devices/` | Paired device configurations |
 | `identity` | `~/.openclaw/identity/` | Agent identity data |
+| `telegram` | `~/.openclaw/telegram/` | Telegram update offsets (prevents reprocessing) |
+| `agents` | `~/.openclaw/agents/` | Agent session state |
+| `subagents` | `~/.openclaw/subagents/` | Subagent run state |
+| `log-monitor` | `~/.openclaw/log-monitor/` | Log monitor cursor and issue registry |
 
 ### Excluded from archives
 - `node_modules/` directories (reinstall after restore)
