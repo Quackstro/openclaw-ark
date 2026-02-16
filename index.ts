@@ -23,29 +23,56 @@ export default function register(api: any) {
     api.config?.gateway?.port ??
     (process.env.OPENCLAW_GATEWAY_PORT ? parseInt(process.env.OPENCLAW_GATEWAY_PORT, 10) : 18789);
 
-  // ─── Resolve Telegram bot token for message deletion ──────────────────
-  const telegramAccounts = (api.config?.channels?.telegram as any)?.accounts ?? {};
-  const defaultBotToken: string | undefined =
-    (Object.values(telegramAccounts).find((a: any) => a?.botToken) as any)?.botToken ??
-    api.config?.channels?.telegram?.botToken;
+  // ─── Resolve Telegram bot tokens for message deletion ─────────────────
+  const telegramCfg = api.config?.channels?.telegram as any;
+  const telegramAccounts: Record<string, any> = telegramCfg?.accounts ?? {};
+  const topLevelBotToken: string | undefined = telegramCfg?.botToken;
 
-  async function deleteTelegramMessage(chatId: string, messageId: string): Promise<boolean> {
-    if (!defaultBotToken || !chatId || !messageId) return false;
+  function resolveBotToken(accountId?: string): string | undefined {
+    if (accountId && telegramAccounts[accountId]?.botToken) {
+      return telegramAccounts[accountId].botToken;
+    }
+    return topLevelBotToken;
+  }
+
+  async function deleteTelegramMessage(chatId: string, messageId: string, accountId?: string): Promise<boolean> {
+    const token = resolveBotToken(accountId);
+    if (!token || !chatId || !messageId) {
+      logger.warn(`[ark] deleteMessage skipped: token=${!!token}, chatId=${chatId}, messageId=${messageId}`);
+      return false;
+    }
     try {
-      const res = await fetch(`https://api.telegram.org/bot${defaultBotToken}/deleteMessage`, {
+      const res = await fetch(`https://api.telegram.org/bot${token}/deleteMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chat_id: chatId, message_id: Number(messageId) }),
+        body: JSON.stringify({ chat_id: Number(chatId), message_id: Number(messageId) }),
         signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok) {
-        logger.warn(`[ark] deleteMessage failed (${res.status})`);
+        const body = await res.text().catch(() => "");
+        logger.warn(`[ark] deleteMessage failed (${res.status}): ${body}`);
         return false;
       }
+      logger.info(`[ark] deleted message ${messageId} in chat ${chatId}`);
       return true;
     } catch (err: any) {
       logger.warn(`[ark] deleteMessage error: ${err.message}`);
       return false;
+    }
+  }
+
+  async function sendTelegramMessage(chatId: string, text: string, accountId?: string): Promise<void> {
+    const token = resolveBotToken(accountId);
+    if (!token || !chatId) return;
+    try {
+      await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: Number(chatId), text }),
+        signal: AbortSignal.timeout(10_000),
+      });
+    } catch (err: any) {
+      logger.warn(`[ark] sendMessage error: ${err.message}`);
     }
   }
 
@@ -280,7 +307,12 @@ export default function register(api: any) {
 
           // Delete the user's message immediately — it contains the passphrase
           if (ctx.chatId && ctx.messageId) {
-            deleteTelegramMessage(ctx.chatId, ctx.messageId).catch(() => {});
+            deleteTelegramMessage(ctx.chatId, ctx.messageId, ctx.accountId).catch(() => {});
+          }
+
+          // Send a progress message so the user knows the backup is underway
+          if (ctx.chatId) {
+            sendTelegramMessage(ctx.chatId, "🚢 Backup started — this may take a moment...", ctx.accountId).catch(() => {});
           }
 
           try {
@@ -348,7 +380,7 @@ export default function register(api: any) {
 
           // Delete user's message — it contains the passphrase
           if (ctx.chatId && ctx.messageId) {
-            deleteTelegramMessage(ctx.chatId, ctx.messageId).catch(() => {});
+            deleteTelegramMessage(ctx.chatId, ctx.messageId, ctx.accountId).catch(() => {});
           }
 
           let archivePath: string;
