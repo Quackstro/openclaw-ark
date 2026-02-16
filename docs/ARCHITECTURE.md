@@ -115,45 +115,49 @@ When `backup_create` completes and the archive is under 50MB, the tool response 
 - **Size limit:** Telegram allows file uploads up to 50MB.
 - **Mime type handling:** `.ocbak` files have no standard mime type, so the delivery pipeline's fallback path routes them to `sendDocument`.
 
-### 2. HTTP Download Link (with automatic nginx proxy)
+### 2. Download Button (HTTPS via nginx proxy)
 
-For all backups, Ark also generates a temporary one-time HTTP download link served from the gateway's internal HTTP server.
+For all backups, Ark generates a temporary one-time download link and renders it as a **Telegram inline URL button**.
 
 **Flow:**
-1. `backup_create` generates a random 64-char hex token
+1. `/ark backup` generates a random 64-char hex token
 2. Registers an HTTP handler at `/ark/download/<token>` on the gateway (port 18789)
-3. Detects if nginx is installed and running
-4. If nginx is available and `sudo -n` works, writes a temporary proxy config to `/etc/nginx/conf.d/ark-download-<prefix>.conf` and reloads nginx
-5. Returns the download URL to the agent
-6. After 10 minutes (or after one download), the token is invalidated:
-   - The nginx config file is removed via `sudo rm`
-   - Nginx is reloaded to drop the proxy rule
-   - The in-memory token is deleted
+3. A permanent nginx `location /ark/download/` block proxies HTTPS requests from the public domain to the gateway
+4. The download URL (`https://<public-host>/ark/download/<token>`) is returned as a `channelData.telegram.buttons` inline URL button
+5. After 10 minutes (or after one download), the token is invalidated and the in-memory entry is deleted
 
-**Nginx config template:**
+**Nginx setup (permanent, added once to the HTTPS server block):**
 ```nginx
-server {
-    listen 80;
-    server_name _;
-    location = /ark/download/<token> {
-        proxy_pass http://127.0.0.1:18789/ark/download/<token>;
-        proxy_set_header Host $host;
-        proxy_buffering off;
-    }
+location /ark/download/ {
+    proxy_pass http://127.0.0.1:18789;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_buffering off;
+    proxy_read_timeout 120s;
 }
 ```
 
+**Public hostname** is resolved from `OPENCLAW_PUBLIC_HOST` env var, falling back to the configured sslip.io domain.
+
 **Safety features:**
 - One-time use tokens (invalidated after first download)
-- 10-minute auto-expiry with `setTimeout` + nginx cleanup
-- `nginx -t` validation before reload — rolls back config on failure
-- Passwordless sudo required (`sudo -n`) — skips nginx if not available
+- 10-minute auto-expiry via `setTimeout`
 - No persistent state — all tokens are in-memory, cleared on restart
+- HTTPS-only — download links use the server's SSL certificate
+
+## Passphrase Security
+
+Slash commands (`/ark backup`, `/ark restore`) **auto-delete** the user's message from Telegram chat immediately after receiving it. This prevents passphrases from persisting in chat history.
+
+- Uses the Telegram Bot API `deleteMessage` endpoint directly
+- Resolves the correct bot token per `accountId` (supports multi-account setups)
+- A progress message ("🚢 Backup started — this may take a moment...") is sent immediately so the user has feedback while the backup runs
+- The `backup_create` and `backup_restore` agent tools are registered as stubs that redirect the LLM to instruct the user to use slash commands instead
 
 ## Security Considerations
 
 - Archives contain **sensitive data** (API keys, wallet keys, OAuth tokens)
 - Always use a strong passphrase (8+ characters enforced, longer recommended)
 - Store `.ocbak` files securely — treat them like private keys
-- Delete `/ark backup <pass>` messages from chat after use (passphrase visible)
+- `/ark backup` and `/ark restore` messages are auto-deleted from Telegram (passphrase protection)
 - The passphrase is never stored — losing it means losing the backup

@@ -8,11 +8,12 @@
 - **Selective backup/restore** — choose which categories to include
 - **14 backup categories**: config, credentials, wallet, brain, doc-rag, cron, extensions, workspace (all agents), devices, identity, telegram, agents, subagents, log-monitor
 - **Retention policy** — auto-prune old backups by count or age
-- **Agent tools** — `backup_create`, `backup_restore`, `backup_list`, `backup_status`
+- **Agent tools** — `backup_list`, `backup_status` (read-only queries)
 - **CLI commands** — `openclaw backup create|restore|list|prune`
-- **Slash commands** — `/ark`, `/ark backup`, `/ark list`, `/ark restore`, `/ark prune`, `/ark help`
+- **Slash commands** — `/ark`, `/ark backup`, `/ark restore`, `/ark list`, `/ark prune`, `/ark help`
+- **Passphrase security** — `/ark backup` and `/ark restore` messages are auto-deleted from Telegram chat
 - **Telegram file delivery** — backups under 50MB are sent as downloadable Telegram documents automatically
-- **HTTP download links** — one-time download URLs with 10-minute expiry and automatic nginx proxy setup/teardown
+- **Download button** — one-time HTTPS download URL rendered as a clickable Telegram inline button (10-minute expiry)
 - **Zero external dependencies** — uses Node.js built-in crypto, zlib, and a minimal tar implementation
 
 ## Install
@@ -42,9 +43,10 @@ openclaw plugins install @quackstro/ark
 | Command | Description |
 |---------|-------------|
 | `/ark` | Status overview |
-| `/ark backup <passphrase>` | Create encrypted backup |
+| `/ark backup <passphrase>` | Create encrypted backup (message auto-deleted) |
+| `/ark restore <passphrase>` | Restore from latest backup (message auto-deleted) |
+| `/ark restore <file> <passphrase>` | Restore from specific backup |
 | `/ark list` | List all backups |
-| `/ark restore` | Restore instructions |
 | `/ark prune` | Remove old backups |
 | `/ark help` | Command reference |
 
@@ -75,10 +77,10 @@ openclaw backup prune
 
 ### Agent (conversational)
 
-> "Create a backup with passphrase 'hunter2'"
 > "Show backup status"
-> "Restore from the latest backup"
 > "List my backups"
+
+> **Note:** Backup and restore require slash commands (`/ark backup`, `/ark restore`) for passphrase security. The agent tools for `backup_create` and `backup_restore` will redirect you to use slash commands so that passphrases are never exposed in chat history.
 
 ## Configuration
 

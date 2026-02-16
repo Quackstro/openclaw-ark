@@ -26,18 +26,18 @@ Create an encrypted backup of all enabled categories.
 **Requirements:**
 - Passphrase must be at least 8 characters
 
-```
-/ark backup my-secure-pass-2026
-```
+**Security:**
+- Your message containing the passphrase is **auto-deleted** from the chat immediately
+- A progress message ("🚢 Backup started — this may take a moment...") is sent while the backup runs
+- The result includes a clickable **📥 Download Backup** button with a one-time HTTPS link (10-minute expiry)
 
 ```
 ✅ Backup created!
 📦 openclaw-backup-2026-02-11T01-00-00.ocbak
 📏 12.3MB | 847 files | 3200ms
 🗂 config, credentials, wallet, brain, docrag, cron, extensions, workspace, devices, identity
+[📥 Download Backup (10min)]   ← inline button
 ```
-
-> ⚠️ **Security note:** The passphrase is visible in chat. On Telegram, delete the message after the backup completes. A future version may auto-delete.
 
 ---
 
@@ -57,8 +57,24 @@ List all backup archives with sizes and dates.
 
 ---
 
-### `/ark restore`
-Shows restore instructions. Restore requires agent tools or CLI for safety (confirmation, selective categories, dry-run).
+### `/ark restore <passphrase>`
+Restore from the **latest** backup archive.
+
+### `/ark restore <filename> <passphrase>`
+Restore from a **specific** backup archive. Use `/ark list` to see available filenames.
+
+**Security:**
+- Your message containing the passphrase is **auto-deleted** from the chat immediately
+
+```
+✅ Restore complete!
+📦 openclaw-backup-2026-02-11T01-00-00.ocbak
+📂 847 files from config, credentials, wallet, brain, ...
+📅 Backup created: 2026-02-11T01:00:00.000Z
+⏱ Duration: 1200ms
+
+⚠️ Restart gateway to apply config changes.
+```
 
 ---
 
@@ -79,8 +95,9 @@ Show all available commands.
 ━━━━━━━━━━━━━━━━━━━━━━
   /ark — Status overview
   /ark backup <passphrase> — Create encrypted backup
+  /ark restore <passphrase> — Restore from latest backup
+  /ark restore <file> <passphrase> — Restore specific backup
   /ark list — List all backups
-  /ark restore — Restore instructions
   /ark prune — Remove old backups
   /ark help — This message
 
@@ -92,35 +109,15 @@ Show all available commands.
 
 ## Agent Tools
 
-These tools are available for conversational use and sub-agent automation.
+Read-only tools are available for conversational use. Backup and restore operations require slash commands for passphrase security — the agent will redirect you if you ask conversationally.
 
-### `backup_create`
-Create an encrypted backup.
+### `backup_create` (redirect)
+Not callable — instructs the agent to direct you to `/ark backup <passphrase>`.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `passphrase` | string | ✅ | Encryption passphrase (8+ chars) |
-| `categories` | string[] | ❌ | Specific categories to include (default: all enabled) |
+### `backup_restore` (redirect)
+Not callable — instructs the agent to direct you to `/ark restore <passphrase>`.
 
-**Example:**
-> "Create a backup with passphrase test-backup-2026"
-> "Back up only config and wallet with passphrase mypass123"
-
----
-
-### `backup_restore`
-Restore from an encrypted backup archive.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `archivePath` | string | ✅ | Path to `.ocbak` file |
-| `passphrase` | string | ✅ | Decryption passphrase |
-| `categories` | string[] | ❌ | Categories to restore (default: all) |
-| `dryRun` | boolean | ❌ | Preview without writing files |
-
-**Example:**
-> "Restore from the latest backup with passphrase test-backup-2026"
-> "Dry-run restore of just the workspace"
+> **Why?** Passphrases typed as natural language remain in Telegram chat history. Slash command messages are auto-deleted immediately, keeping your passphrase out of the conversation.
 
 ---
 
