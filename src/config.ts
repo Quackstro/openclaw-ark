@@ -57,7 +57,21 @@ export const CATEGORIES: BackupCategory[] = [
     id: "brain",
     label: "Brain Data",
     sensitive: false,
-    paths: (oc) => [resolve(oc, "brain")],
+    paths: (oc) => {
+      const paths = [resolve(oc, "brain")];
+      // Also capture the actual LanceDB data if stored outside ~/.openclaw/brain
+      // (e.g., ~/clawd/brain/lancedb configured via plugin dbPath)
+      const home = homedir();
+      const altPath = resolve(home, "clawd", "brain");
+      if (altPath !== paths[0]) paths.push(altPath);
+      return paths;
+    },
+  },
+  {
+    id: "ledger",
+    label: "Ledger Data",
+    sensitive: true,
+    paths: (oc) => [resolve(oc, "ledger")],
   },
   {
     id: "docrag",

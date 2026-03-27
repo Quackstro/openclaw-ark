@@ -5,7 +5,6 @@
   "description": "Encrypted backup & restore for OpenClaw — preserve and migrate your entire setup 🚢",
   "author": "Quackstro LLC",
   "license": "MIT",
-  "kind": "service",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,

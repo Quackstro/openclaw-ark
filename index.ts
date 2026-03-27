@@ -15,7 +15,7 @@ import { createDownloadLink, createDownloadHandler, cleanupAllDownloads } from "
 
 export default function register(api: any) {
   const logger = api.logger ?? console;
-  const rawCfg = api.config?.plugins?.entries?.ark?.config ?? {};
+  const rawCfg = api.pluginConfig ?? api.config?.plugins?.entries?.ark?.config ?? {};
   const config = parseConfig(rawCfg);
 
   // ─── Resolve gateway port for download links ───────────────────────────
@@ -76,9 +76,14 @@ export default function register(api: any) {
     }
   }
 
-  // ─── Register HTTP handler for download routes ─────────────────────────
+  // ─── Register HTTP route for download links ────────────────────────────
   const downloadHandler = createDownloadHandler(logger);
-  api.registerHttpHandler?.((req: any, res: any) => downloadHandler(req, res));
+  api.registerHttpRoute?.({
+    path: "/ark/download",
+    handler: (req: any, res: any) => downloadHandler(req, res),
+    auth: "plugin",
+    match: "prefix",
+  });
 
   // ─── Agent Tools ───────────────────────────────────────────────────────
 
