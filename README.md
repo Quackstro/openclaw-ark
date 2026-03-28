@@ -6,14 +6,13 @@
 
 - **AES-256-GCM encryption** with PBKDF2 key derivation (600K iterations)
 - **Selective backup/restore** — choose which categories to include
-- **14 backup categories**: config, credentials, wallet, brain, doc-rag, cron, extensions, workspace (all agents), devices, identity, telegram, agents, subagents, log-monitor
+- **15 backup categories**: config, credentials, wallet, brain, ledger, doc-rag, cron, extensions, workspace (all agents), devices, identity, telegram, agents, subagents, log-monitor
 - **Retention policy** — auto-prune old backups by count or age
-- **Agent tools** — `backup_list`, `backup_status` (read-only queries)
+- **Agent tools** — `backup_create`, `backup_restore`, `backup_list`, `backup_status`
 - **CLI commands** — `openclaw backup create|restore|list|prune`
-- **Slash commands** — `/ark`, `/ark backup`, `/ark restore`, `/ark list`, `/ark prune`, `/ark help`
-- **Passphrase security** — `/ark backup` and `/ark restore` messages are auto-deleted from Telegram chat
+- **Slash commands** — `/ark`, `/ark backup`, `/ark list`, `/ark restore`, `/ark prune`, `/ark help`
 - **Telegram file delivery** — backups under 50MB are sent as downloadable Telegram documents automatically
-- **Download button** — one-time HTTPS download URL rendered as a clickable Telegram inline button (10-minute expiry)
+- **HTTP download links** — one-time download URLs with 10-minute expiry and automatic nginx proxy setup/teardown
 - **Zero external dependencies** — uses Node.js built-in crypto, zlib, and a minimal tar implementation
 
 ## Install
@@ -43,10 +42,9 @@ openclaw plugins install @quackstro/ark
 | Command | Description |
 |---------|-------------|
 | `/ark` | Status overview |
-| `/ark backup <passphrase>` | Create encrypted backup (message auto-deleted) |
-| `/ark restore <passphrase>` | Restore from latest backup (message auto-deleted) |
-| `/ark restore <file> <passphrase>` | Restore from specific backup |
+| `/ark backup <passphrase>` | Create encrypted backup |
 | `/ark list` | List all backups |
+| `/ark restore` | Restore instructions |
 | `/ark prune` | Remove old backups |
 | `/ark help` | Command reference |
 
@@ -77,10 +75,10 @@ openclaw backup prune
 
 ### Agent (conversational)
 
+> "Create a backup with passphrase 'hunter2'"
 > "Show backup status"
+> "Restore from the latest backup"
 > "List my backups"
-
-> **Note:** Backup and restore require slash commands (`/ark backup`, `/ark restore`) for passphrase security. The agent tools for `backup_create` and `backup_restore` will redirect you to use slash commands so that passphrases are never exposed in chat history.
 
 ## Configuration
 
@@ -131,7 +129,8 @@ openclaw backup prune
 | `config` | `openclaw.json` (API keys, channel tokens) | 🔐 Yes |
 | `credentials` | OAuth tokens, provider credentials | 🔐 Yes |
 | `wallet` | DOGE keystore, UTXOs, audit log | 🔐 Yes |
-| `brain` | Brain stores (LanceDB), pending actions | No |
+| `brain` | Brain stores (LanceDB), pending actions. Also captures `~/clawd/brain/` if present | No |
+| `ledger` | Ledger financial data (accounts, statements, categories) | 🔐 Yes |
 | `docrag` | Ingested documents + embeddings | No |
 | `cron` | Cron job definitions + run history | No |
 | `extensions` | Installed plugins (source code) | No |

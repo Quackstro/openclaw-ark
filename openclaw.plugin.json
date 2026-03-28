@@ -23,6 +23,7 @@
           "credentials": { "type": "boolean", "default": true },
           "wallet":      { "type": "boolean", "default": true },
           "brain":       { "type": "boolean", "default": true },
+          "ledger":      { "type": "boolean", "default": true },
           "docrag":      { "type": "boolean", "default": true },
           "cron":        { "type": "boolean", "default": true },
           "extensions":  { "type": "boolean", "default": true },
